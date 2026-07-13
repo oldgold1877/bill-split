@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Split — bill splitter</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#FBF8F1;
+    --paper-dim:#F2EEE3;
+    --ink:#20241F;
+    --ink-soft:#666B60;
+    --ink-faint:#9A9E92;
+    --accent:#1C6B63;
+    --accent-ink:#0E3F3A;
+    --accent-soft:#DEEEEB;
+    --line:#DAD3BF;
+    --danger:#B3261E;
+    --danger-soft:#F7E3E1;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(32,36,31,0.06), 0 1px 1px rgba(32,36,31,0.04);
+    --font-display:'Space Mono', monospace;
+    --font-body:'Manrope', sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    font-family:var(--font-body);
+    background:var(--paper);
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    display:flex;
+    justify-content:center;
+  }
+  #app{
+    width:100%;
+    max-width:480px;
+    min-height:100vh;
+    min-height:100dvh;
+    background:var(--paper);
+    display:flex;
+    flex-direction:column;
+    position:relative;
+    box-shadow:0 0 40px rgba(0,0,0,0.06);
+  }
+
+  /* ---------- Header / ticket strip ---------- */
+  header.ticket{
+    padding:20px 20px 0 20px;
+    border-bottom:1px dashed var(--line);
+  }
+  .brand{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    margin-bottom:14px;
+  }
+  .brand h1{
+    font-family:var(--font-display);
+    font-size:20px;
+    letter-spacing:0.5px;
+    margin:0;
+    font-weight:700;
+  }
+  .brand .tag{
+    font-size:11px;
+    color:var(--ink-faint);
+    text-transform:uppercase;
+    letter-spacing:1.5px;
+  }
+  .steps{
+    display:flex;
+    gap:6px;
+    padding-bottom:14px;
+  }
+  .step-tab{
+    flex:1;
+    text-align:center;
+    font-family:var(--font-display);
+    font-size:10.5px;
+    letter-spacing:0.5px;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    padding:6px 2px 10px 2px;
+    border-bottom:3px solid var(--line);
+    transition:all .2s ease;
+  }
+  .step-tab.active{
+    color:var(--accent-ink);
+    border-bottom-color:var(--accent);
+    font-weight:700;
+  }
+  .step-tab.done{
+    color:var(--ink-soft);
+    border-bottom-color:var(--ink-faint);
+  }
+
+  /* ---------- Main content ---------- */
+  main{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  .screen{
+    display:none;
+    flex:1;
+    flex-direction:column;
+    overflow:hidden;
+  }
+  .screen.active{display:flex;}
+
+  .scroll{
+    flex:1;
+    overflow-y:auto;
+    padding:16px 20px;
+  }
+
+  /* ---------- Footer / action bar ---------- */
+  footer.actions{
+    padding:14px 20px calc(16px + env(safe-area-inset-bottom));
+    border-top:1px dashed var(--line);
+    display:flex;
+    gap:10px;
+    background:var(--paper);
+  }
+  button{
+    font-family:var(--font-body);
+    cursor:pointer;
+    border:none;
+    outline:none;
+  }
+  .btn{
+    flex:1;
+    padding:13px 16px;
+    border-radius:var(--radius);
+    font-size:15px;
+    font-weight:700;
+    transition:transform .08s ease, opacity .15s ease;
+  }
+  .btn:active{transform:scale(0.97);}
+  .btn-primary{background:var(--accent); color:#fff;}
+  .btn-primary:disabled{background:var(--ink-faint); cursor:not-allowed;}
+  .btn-ghost{background:var(--paper-dim); color:var(--ink);}
+  .btn-danger{background:var(--danger-soft); color:var(--danger);}
+  .btn-small{flex:none; padding:9px 14px; font-size:13px; border-radius:10px;}
+
+  /* ---------- Screen 1: people ---------- */
+  .add-row{
+    display:flex;
+    gap:8px;
+    margin-bottom:18px;
+  }
+  .add-row input{
+    flex:1;
+    padding:12px 14px;
+    border-radius:var(--radius);
+    border:1px solid var(--line);
+    background:#fff;
+    font-size:15px;
+    font-family:var(--font-body);
+    color:var(--ink);
+  }
+  .add-row input:focus{border-color:var(--accent);}
+  .icon-btn{
+    width:46px;
+    border-radius:var(--radius);
+    background:var(--accent);
+    color:#fff;
+    font-size:20px;
+    font-weight:700;
+    line-height:1;
+  }
+
+  .person-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:11px 4px;
+    border-bottom:1px solid var(--paper-dim);
+  }
+  .swatch{
+    width:38px;height:38px;
+    min-width:38px;
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:13px;
+    color:#fff;
+  }
+  .person-row .pname{flex:1; font-size:15.5px; font-weight:500;}
+  .remove-x{
+    background:none;
+    color:var(--ink-faint);
+    font-size:18px;
+    width:30px;height:30px;
+    border-radius:8px;
+  }
+  .remove-x:hover{background:var(--paper-dim); color:var(--danger);}
+  .empty-hint{
+    color:var(--ink-faint);
+    font-size:14px;
+    padding:24px 4px;
+    text-align:center;
+    line-height:1.5;
+  }
+
+  /* ---------- Screen 2: bill items ---------- */
+  .total-strip{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    padding:12px 16px;
+    background:var(--accent-soft);
+    border-radius:var(--radius);
+    margin-bottom:16px;
+  }
+  .total-strip .label{font-size:12.5px; text-transform:uppercase; letter-spacing:1px; color:var(--accent-ink); font-weight:700;}
+  .total-strip .amount{font-family:var(--font-display); font-size:22px; font-weight:700; color:var(--accent-ink);}
+
+  .item-row{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    padding:8px 0;
+  }
+  .item-row input.item-name{
+    flex:1;
+    min-width:0;
+    padding:11px 12px;
+    border-radius:10px;
+    border:1px solid var(--line);
+    background:#fff;
+    font-size:14.5px;
+    font-family:var(--font-body);
+  }
+  .item-row .price-wrap{
+    position:relative;
+    width:106px;
+  }
+  .item-row .price-wrap span{
+    position:absolute;
+    left:11px; top:50%; transform:translateY(-50%);
+    color:var(--ink-faint);
+    font-family:var(--font-display);
+    font-size:14px;
+  }
+  .item-row input.item-price{
+    width:100%;
+    padding:11px 10px 11px 24px;
+    border-radius:10px;
+    border:1px solid var(--line);
+    background:#fff;
+    font-size:14.5px;
+    font-family:var(--font-display);
+    text-align:right;
+  }
+  .item-row input:focus{border-color:var(--accent);}
+
+  /* ---------- Screen 3: apportion ---------- */
+  .bill-line{
+    border:2px solid transparent;
+    background:#fff;
+    border-radius:var(--radius);
+    padding:12px 14px;
+    margin-bottom:10px;
+    box-shadow:var(--shadow);
+    transition:border-color .12s ease;
+  }
+  .bill-line.selected{
+    border-color:var(--accent);
+  }
+  .bill-line .top-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    margin-bottom:9px;
+  }
+  .bill-line .iname{font-size:15px; font-weight:700;}
+  .bill-line .iprice{font-family:var(--font-display); font-size:15px; color:var(--ink-soft);}
+  .bar{
+    height:16px;
+    border-radius:8px;
+    background:repeating-linear-gradient(45deg, var(--paper-dim), var(--paper-dim) 5px, #EFEAD9 5px, #EFEAD9 10px);
+    display:flex;
+    overflow:hidden;
+  }
+  .bar .seg{
+    height:100%;
+  }
+  .line-breakdown{
+    margin-top:7px;
+    font-family:var(--font-display);
+    font-size:11.5px;
+    color:var(--ink-soft);
+    min-height:14px;
+    letter-spacing:0.2px;
+  }
+
+  .party-dock{
+    padding:12px 20px 4px 20px;
+    border-top:1px dashed var(--line);
+  }
+  .party-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    justify-content:center;
+    margin-bottom:12px;
+  }
+  .party-btn{
+    width:52px;height:52px;
+    border-radius:50%;
+    color:#fff;
+    font-family:var(--font-display);
+    font-weight:700;
+    font-size:13px;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:var(--shadow);
+    position:relative;
+  }
+  .party-btn:active{transform:scale(0.92);}
+  .party-btn .count-badge{
+    position:absolute;
+    top:-4px; right:-4px;
+    background:var(--ink);
+    color:#fff;
+    border-radius:50%;
+    min-width:18px; height:18px;
+    font-size:10px;
+    display:flex;align-items:center;justify-content:center;
+    padding:0 3px;
+  }
+  .dock-actions{
+    display:flex;
+    gap:8px;
+    margin-bottom:10px;
+  }
+
+  /* ---------- Screen 4: summary ---------- */
+  .summary-row{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:13px 4px;
+    border-bottom:1px solid var(--paper-dim);
+  }
+  .summary-row .pname{flex:1; font-size:15.5px; font-weight:600;}
+  .summary-row .pamount{font-family:var(--font-display); font-size:17px; font-weight:700;}
+  .grand-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    margin-top:16px;
+    padding-top:14px;
+    border-top:2px solid var(--ink);
+  }
+  .grand-row .glabel{font-size:13px; text-transform:uppercase; letter-spacing:1px; font-weight:700;}
+  .grand-row .gamount{font-family:var(--font-display); font-size:24px; font-weight:700;}
+  .warn-banner{
+    background:var(--danger-soft);
+    color:var(--danger);
+    border-radius:10px;
+    padding:11px 13px;
+    font-size:13px;
+    margin-bottom:14px;
+    line-height:1.5;
+  }
+  .warn-banner b{display:block; margin-bottom:2px;}
+
+  ::-webkit-scrollbar{width:0px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <header class="ticket">
+    <div class="brand">
+      <h1>Split</h1>
+      <div class="tag">bill splitter</div>
+    </div>
+    <div class="steps" id="stepTabs">
+      <div class="step-tab" data-step="1">1 · Who</div>
+      <div class="step-tab" data-step="2">2 · Bill</div>
+      <div class="step-tab" data-step="3">3 · Split</div>
+      <div class="step-tab" data-step="4">4 · Total</div>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- SCREEN 1: PEOPLE -->
+    <section class="screen" id="screen1">
+      <div class="scroll">
+        <div class="add-row">
+          <input type="text" id="nameInput" placeholder="Add a name…" maxlength="30" autocomplete="off">
+          <button class="icon-btn" id="addPersonBtn">+</button>
+        </div>
+        <div id="peopleList"></div>
+      </div>
+      <footer class="actions">
+        <button class="btn btn-primary" id="toStep2" disabled>Next</button>
+      </footer>
+    </section>
+
+    <!-- SCREEN 2: BILL ITEMS -->
+    <section class="screen" id="screen2">
+      <div class="scroll">
+        <div class="total-strip">
+          <div class="label">Grand total</div>
+          <div class="amount" id="billTotal">€0.00</div>
+        </div>
+        <div id="itemsList"></div>
+        <button class="btn btn-ghost" id="addLineBtn" style="width:100%; margin-top:6px;">+ Add line</button>
+      </div>
+      <footer class="actions">
+        <button class="btn btn-ghost" id="backTo1">Back</button>
+        <button class="btn btn-primary" id="toStep3">Next</button>
+      </footer>
+    </section>
+
+    <!-- SCREEN 3: APPORTION -->
+    <section class="screen" id="screen3">
+      <div class="scroll" id="apportionList"></div>
+      <div class="party-dock">
+        <div class="party-row" id="partyDock"></div>
+        <div class="dock-actions">
+          <button class="btn btn-danger btn-small" id="clearLineBtn">Clear line</button>
+        </div>
+      </div>
+      <footer class="actions">
+        <button class="btn btn-ghost" id="backTo2">Back</button>
+        <button class="btn btn-primary" id="toStep4">Next</button>
+      </footer>
+    </section>
+
+    <!-- SCREEN 4: SUMMARY -->
+    <section class="screen" id="screen4">
+      <div class="scroll">
+        <div id="warnArea"></div>
+        <div id="summaryList"></div>
+        <div class="grand-row">
+          <div class="glabel">Grand total</div>
+          <div class="gamount" id="summaryGrandTotal">€0.00</div>
+        </div>
+      </div>
+      <footer class="actions">
+        <button class="btn btn-ghost" id="backTo3">Back</button>
+        <button class="btn btn-danger" id="newBillBtn">New bill</button>
+      </footer>
+    </section>
+
+  </main>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  var PALETTE = [
+    '#E0483E', '#2F6FED', '#D6A419', // primary-ish: red, blue, yellow
+    '#DD6B20', '#3F9142', '#8452C9', // secondary-ish: orange, green, purple
+    '#D6478E', '#1FA7B3', '#8A7F4A',
+    '#B93B6C', '#2F8F82', '#5860C9'
+  ];
+
+  var STORAGE_KEY = 'billSplitState_v1';
+
+  var defaultState = {
+    step: 1,
+    people: [],      // {id, name, abbr, color}
+    items: [],       // {id, name, price}
+    shares: {},       // itemId -> { personId: count }
+    selectedItemId: null,
+    nextPersonId: 1,
+    nextItemId: 1
+  };
+
+  var state = loadState();
+
+  function loadState(){
+    try{
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        var parsed = JSON.parse(raw);
+        return Object.assign({}, defaultState, parsed);
+      }
+    }catch(e){}
+    return JSON.parse(JSON.stringify(defaultState));
+  }
+
+  function saveState(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+  }
+
+  // ---------- Abbreviation logic ----------
+  function computeAbbreviations(people){
+    var n = people.length;
+    var lengths = new Array(n).fill(1);
+    var finalized = new Array(n).fill(false);
+
+    for(var L = 1; L <= 3; L++){
+      var groups = {};
+      for(var i = 0; i < n; i++){
+        if(finalized[i]) continue;
+        var name = people[i].name || '';
+        var prefix = name.substring(0, L).toLowerCase();
+        if(!groups[prefix]) groups[prefix] = [];
+        groups[prefix].push(i);
+      }
+      Object.keys(groups).forEach(function(prefix){
+        var idxs = groups[prefix];
+        if(idxs.length === 1){
+          var idx = idxs[0];
+          lengths[idx] = Math.min(L, Math.max(1, (people[idx].name || '').length));
+          finalized[idx] = true;
+        } else if(L === 3){
+          // give up differentiating further; lock at 3 (may still collide, acceptable edge case)
+          idxs.forEach(function(idx){
+            lengths[idx] = Math.min(3, Math.max(1, (people[idx].name || '').length));
+            finalized[idx] = true;
+          });
+        }
+      });
+    }
+
+    return people.map(function(p, i){
+      var name = p.name || '';
+      var len = lengths[i] || 1;
+      var raw = name.substring(0, len);
+      // capitalize first letter, keep rest as typed-case
+      return raw.charAt(0).toUpperCase() + raw.slice(1);
+    });
+  }
+
+  function refreshAbbreviations(){
+    var abbrs = computeAbbreviations(state.people);
+    state.people.forEach(function(p, i){ p.abbr = abbrs[i]; });
+  }
+
+  // ---------- Rendering: step tabs ----------
+  function renderStepTabs(){
+    document.querySelectorAll('.step-tab').forEach(function(tab){
+      var s = parseInt(tab.dataset.step, 10);
+      tab.classList.remove('active','done');
+      if(s === state.step) tab.classList.add('active');
+      else if(s < state.step) tab.classList.add('done');
+    });
+    document.querySelectorAll('.screen').forEach(function(scr){ scr.classList.remove('active'); });
+    document.getElementById('screen' + state.step).classList.add('active');
+  }
+
+  // ---------- Screen 1: People ----------
+  var nameInput = document.getElementById('nameInput');
+  var addPersonBtn = document.getElementById('addPersonBtn');
+  var peopleList = document.getElementById('peopleList');
+  var toStep2Btn = document.getElementById('toStep2');
+
+  function addPerson(){
+    var val = nameInput.value.trim();
+    if(!val) return;
+    var color = PALETTE[state.people.length % PALETTE.length];
+    state.people.push({ id: state.nextPersonId++, name: val, abbr: '', color: color });
+    nameInput.value = '';
+    refreshAbbreviations();
+    renderPeople();
+    saveState();
+    nameInput.focus();
+  }
+
+  function removePerson(id){
+    state.people = state.people.filter(function(p){ return p.id !== id; });
+    // also clean up shares referencing this person
+    Object.keys(state.shares).forEach(function(itemId){
+      if(state.shares[itemId] && state.shares[itemId][id] !== undefined){
+        delete state.shares[itemId][id];
+      }
+    });
+    refreshAbbreviations();
+    renderPeople();
+    saveState();
+  }
+
+  function renderPeople(){
+    peopleList.innerHTML = '';
+    if(state.people.length === 0){
+      var hint = document.createElement('div');
+      hint.className = 'empty-hint';
+      hint.textContent = 'Add everyone who\'s splitting this bill. Each person gets a colour and a short tag.';
+      peopleList.appendChild(hint);
+    }
+    state.people.forEach(function(p){
+      var row = document.createElement('div');
+      row.className = 'person-row';
+
+      var sw = document.createElement('div');
+      sw.className = 'swatch';
+      sw.style.background = p.color;
+      sw.textContent = p.abbr;
+
+      var name = document.createElement('div');
+      name.className = 'pname';
+      name.textContent = p.name;
+
+      var rem = document.createElement('button');
+      rem.className = 'remove-x';
+      rem.textContent = '×';
+      rem.addEventListener('click', function(){ removePerson(p.id); });
+
+      row.appendChild(sw);
+      row.appendChild(name);
+      row.appendChild(rem);
+      peopleList.appendChild(row);
+    });
+    toStep2Btn.disabled = state.people.length < 2;
+  }
+
+  addPersonBtn.addEventListener('click', addPerson);
+  nameInput.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); addPerson(); }
+  });
+
+  // ---------- Screen 2: Bill items ----------
+  var itemsList = document.getElementById('itemsList');
+  var addLineBtn = document.getElementById('addLineBtn');
+  var billTotalEl = document.getElementById('billTotal');
+
+  function fmt(n){
+    return '€' + (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2);
+  }
+
+  function addItem(focus){
+    state.items.push({ id: state.nextItemId++, name: '', price: 0 });
+    renderItems();
+    saveState();
+    if(focus){
+      var inputs = itemsList.querySelectorAll('.item-name');
+      var last = inputs[inputs.length - 1];
+      if(last) last.focus();
+    }
+  }
+
+  function removeItem(id){
+    state.items = state.items.filter(function(it){ return it.id !== id; });
+    delete state.shares[id];
+    if(state.selectedItemId === id) state.selectedItemId = null;
+    renderItems();
+    saveState();
+  }
+
+  function renderItems(){
+    itemsList.innerHTML = '';
+    state.items.forEach(function(it){
+      var row = document.createElement('div');
+      row.className = 'item-row';
+
+      var nameInp = document.createElement('input');
+      nameInp.className = 'item-name';
+      nameInp.type = 'text';
+      nameInp.placeholder = 'Item';
+      nameInp.value = it.name;
+      nameInp.addEventListener('input', function(){
+        it.name = nameInp.value;
+        saveState();
+        renderApportionList();
+      });
+
+      var priceWrap = document.createElement('div');
+      priceWrap.className = 'price-wrap';
+      var sym = document.createElement('span');
+      sym.textContent = '€';
+      var priceInp = document.createElement('input');
+      priceInp.className = 'item-price';
+      priceInp.type = 'number';
+      priceInp.step = '0.01';
+      priceInp.min = '0';
+      priceInp.placeholder = '0.00';
+      priceInp.value = it.price ? it.price : '';
+      priceInp.addEventListener('input', function(){
+        it.price = parseFloat(priceInp.value) || 0;
+        updateBillTotal();
+        saveState();
+        renderApportionList();
+      });
+      priceWrap.appendChild(sym);
+      priceWrap.appendChild(priceInp);
+
+      var rem = document.createElement('button');
+      rem.className = 'remove-x';
+      rem.textContent = '×';
+      rem.addEventListener('click', function(){ removeItem(it.id); });
+
+      row.appendChild(nameInp);
+      row.appendChild(priceWrap);
+      row.appendChild(rem);
+      itemsList.appendChild(row);
+    });
+    updateBillTotal();
+  }
+
+  function updateBillTotal(){
+    var total = state.items.reduce(function(sum, it){ return sum + (it.price || 0); }, 0);
+    billTotalEl.textContent = fmt(total);
+  }
+
+  addLineBtn.addEventListener('click', function(){ addItem(true); });
+
+  // ---------- Screen 3: Apportion ----------
+  var apportionList = document.getElementById('apportionList');
+  var partyDock = document.getElementById('partyDock');
+  var clearLineBtn = document.getElementById('clearLineBtn');
+
+  function getShares(itemId){
+    if(!state.shares[itemId]) state.shares[itemId] = {};
+    return state.shares[itemId];
+  }
+
+  function totalShareCount(itemId){
+    var s = getShares(itemId);
+    return Object.keys(s).reduce(function(sum, pid){ return sum + s[pid]; }, 0);
+  }
+
+  function renderPartyDock(){
+    partyDock.innerHTML = '';
+    state.people.forEach(function(p){
+      var btn = document.createElement('button');
+      btn.className = 'party-btn';
+      btn.style.background = p.color;
+      btn.textContent = p.abbr;
+      btn.addEventListener('click', function(){
+        if(state.selectedItemId === null) return;
+        var s = getShares(state.selectedItemId);
+        s[p.id] = (s[p.id] || 0) + 1;
+        saveState();
+        renderApportionList();
+      });
+      partyDock.appendChild(btn);
+    });
+  }
+
+  function renderApportionList(){
+    var scrollPos = apportionList.scrollTop;
+    apportionList.innerHTML = '';
+    state.items.forEach(function(it){
+      var line = document.createElement('div');
+      line.className = 'bill-line' + (state.selectedItemId === it.id ? ' selected' : '');
+      line.addEventListener('click', function(){
+        state.selectedItemId = it.id;
+        renderApportionList();
+      });
+
+      var top = document.createElement('div');
+      top.className = 'top-row';
+      var nm = document.createElement('div');
+      nm.className = 'iname';
+      nm.textContent = it.name || '(unnamed item)';
+      var pr = document.createElement('div');
+      pr.className = 'iprice';
+      pr.textContent = fmt(it.price || 0);
+      top.appendChild(nm);
+      top.appendChild(pr);
+
+      var bar = document.createElement('div');
+      bar.className = 'bar';
+      var shares = getShares(it.id);
+      var totalShares = totalShareCount(it.id);
+      var breakdownParts = [];
+      if(totalShares > 0){
+        state.people.forEach(function(p){
+          var count = shares[p.id] || 0;
+          if(count > 0){
+            var seg = document.createElement('div');
+            seg.className = 'seg';
+            seg.style.background = p.color;
+            seg.style.width = (count / totalShares * 100) + '%';
+            bar.appendChild(seg);
+            var amt = (it.price || 0) * (count / totalShares);
+            breakdownParts.push(p.abbr + ' ' + fmt(amt));
+          }
+        });
+      }
+
+      var breakdown = document.createElement('div');
+      breakdown.className = 'line-breakdown';
+      breakdown.textContent = breakdownParts.length ? breakdownParts.join('  ·  ') : 'Not assigned yet';
+
+      line.appendChild(top);
+      line.appendChild(bar);
+      line.appendChild(breakdown);
+      apportionList.appendChild(line);
+    });
+    apportionList.scrollTop = scrollPos;
+  }
+
+  clearLineBtn.addEventListener('click', function(){
+    if(state.selectedItemId === null) return;
+    state.shares[state.selectedItemId] = {};
+    saveState();
+    renderApportionList();
+  });
+
+  // ---------- Screen 4: Summary ----------
+  var summaryList = document.getElementById('summaryList');
+  var summaryGrandTotal = document.getElementById('summaryGrandTotal');
+  var warnArea = document.getElementById('warnArea');
+
+  function renderSummary(){
+    summaryList.innerHTML = '';
+    warnArea.innerHTML = '';
+
+    var totals = {};
+    state.people.forEach(function(p){ totals[p.id] = 0; });
+
+    var unassigned = [];
+    state.items.forEach(function(it){
+      var shares = getShares(it.id);
+      var totalShares = totalShareCount(it.id);
+      if(totalShares === 0){
+        if(it.name || it.price) unassigned.push(it.name || '(unnamed item)');
+        return;
+      }
+      state.people.forEach(function(p){
+        var count = shares[p.id] || 0;
+        if(count > 0){
+          totals[p.id] += (it.price || 0) * (count / totalShares);
+        }
+      });
+    });
+
+    if(unassigned.length){
+      var warn = document.createElement('div');
+      warn.className = 'warn-banner';
+      warn.innerHTML = '<b>Some items aren\'t split yet</b>' + unassigned.join(', ') + '. Go back to Split to assign them, or the totals below won\'t match the bill.';
+      warnArea.appendChild(warn);
+    }
+
+    var grand = 0;
+    state.people.forEach(function(p){
+      grand += totals[p.id];
+      var row = document.createElement('div');
+      row.className = 'summary-row';
+      var sw = document.createElement('div');
+      sw.className = 'swatch';
+      sw.style.background = p.color;
+      sw.textContent = p.abbr;
+      var nm = document.createElement('div');
+      nm.className = 'pname';
+      nm.textContent = p.name;
+      var amt = document.createElement('div');
+      amt.className = 'pamount';
+      amt.textContent = fmt(totals[p.id]);
+      row.appendChild(sw);
+      row.appendChild(nm);
+      row.appendChild(amt);
+      summaryList.appendChild(row);
+    });
+
+    summaryGrandTotal.textContent = fmt(grand);
+  }
+
+  // ---------- Navigation ----------
+  function goToStep(n){
+    state.step = n;
+    if(n === 3){
+      if(state.selectedItemId === null && state.items.length){
+        state.selectedItemId = state.items[0].id;
+      }
+      renderPartyDock();
+      renderApportionList();
+    }
+    if(n === 4){
+      renderSummary();
+    }
+    saveState();
+    renderStepTabs();
+  }
+
+  document.getElementById('toStep2').addEventListener('click', function(){ goToStep(2); });
+  document.getElementById('backTo1').addEventListener('click', function(){ goToStep(1); });
+  document.getElementById('toStep3').addEventListener('click', function(){
+    if(state.items.length === 0){ addItem(false); }
+    goToStep(3);
+  });
+  document.getElementById('backTo2').addEventListener('click', function(){ goToStep(2); });
+  document.getElementById('toStep4').addEventListener('click', function(){ goToStep(4); });
+  document.getElementById('backTo3').addEventListener('click', function(){ goToStep(3); });
+  document.getElementById('newBillBtn').addEventListener('click', function(){
+    if(!confirm('Start a new bill? This clears everyone and every item.')) return;
+    state = JSON.parse(JSON.stringify(defaultState));
+    saveState();
+    init();
+  });
+
+  // ---------- Init ----------
+  function init(){
+    refreshAbbreviations();
+    renderPeople();
+    renderItems();
+    if(state.items.length === 0){
+      // seed one blank line for convenience
+    }
+    renderStepTabs();
+    if(state.step === 3){ renderPartyDock(); renderApportionList(); }
+    if(state.step === 4){ renderSummary(); }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
