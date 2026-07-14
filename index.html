@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root{
     --paper:#FBF8F1;
@@ -262,6 +263,27 @@
   }
   .item-row input:focus{border-color:var(--accent);}
 
+  .line-btn-row{
+    display:flex;
+    gap:8px;
+    margin-top:6px;
+  }
+  .line-btn-row .btn{flex:1;}
+  .scan-status{
+    display:none;
+    font-size:13px;
+    color:var(--accent-ink);
+    background:var(--accent-soft);
+    border-radius:10px;
+    padding:10px 12px;
+    margin-bottom:12px;
+    line-height:1.5;
+  }
+  .scan-status.error{
+    color:var(--danger);
+    background:var(--danger-soft);
+  }
+
   /* ---------- Screen 3: apportion ---------- */
   .bill-line{
     border:2px solid transparent;
@@ -432,8 +454,13 @@
         </div>
       </div>
       <div class="scroll">
+        <div id="scanStatus" class="scan-status"></div>
         <div id="itemsList"></div>
-        <button class="btn btn-ghost" id="addLineBtn" style="width:100%; margin-top:6px;">+ Add line</button>
+        <div class="line-btn-row">
+          <button class="btn btn-ghost" id="addLineBtn">+ Add line</button>
+          <button class="btn btn-ghost" id="scanReceiptBtn">📷 Scan receipt</button>
+        </div>
+        <input type="file" accept="image/*" capture="environment" id="receiptPhotoInput" style="display:none">
       </div>
       <footer class="actions">
         <button class="btn btn-ghost" id="backTo1">Back</button>
@@ -744,6 +771,107 @@
   }
 
   addLineBtn.addEventListener('click', function(){ addItem(true); });
+
+  // ---------- Receipt scanning (Tesseract.js OCR, runs entirely on-device) ----------
+  var scanReceiptBtn = document.getElementById('scanReceiptBtn');
+  var receiptPhotoInput = document.getElementById('receiptPhotoInput');
+  var scanStatus = document.getElementById('scanStatus');
+
+  function setScanStatus(msg, isError){
+    scanStatus.textContent = msg;
+    scanStatus.style.display = msg ? 'block' : 'none';
+    scanStatus.classList.toggle('error', !!isError);
+  }
+
+  // Turns raw OCR text into a best-guess list of {name, price} lines.
+  // Ignores quantity/unit-price columns by only ever taking the LAST price
+  // found on a line (the line total), and skips obvious non-item lines
+  // (subtotal, tax, card, change, etc).
+  function parseReceiptText(text){
+    var skipWords = /\b(sub ?total|total|tax|vat|change|cash|card|debit|credit|visa|mastercard|balance|amount due|due|tip|gratuity|service charge|payment|thank you|receipt|invoice|table|server|order\s*#?|date|time)\b/i;
+    var priceRe = /\d+[.,]\d{2}/g;
+    var results = [];
+
+    text.split(/\r?\n/).forEach(function(rawLine){
+      var line = rawLine.trim();
+      if(!line) return;
+      if(skipWords.test(line)) return;
+
+      var matches = line.match(priceRe);
+      if(!matches || matches.length === 0) return;
+
+      var lastPriceStr = matches[matches.length - 1];
+      var lastIndex = line.lastIndexOf(lastPriceStr);
+      var priceNum = parseFloat(lastPriceStr.replace(',', '.'));
+      if(isNaN(priceNum) || priceNum <= 0) return;
+
+      var namePart = line.substring(0, lastIndex);
+      namePart = namePart.replace(/[€£$]/g, '');
+      namePart = namePart.replace(/^\s*\d+\s*[xX]\s*/, '');   // leading "2 x "
+      namePart = namePart.replace(/^\s*\d+\s+/, '');          // leading "2 "
+      namePart = namePart.replace(/[\s.\-x@]+$/i, '');        // trailing junk / unit price lead-ins
+      namePart = namePart.replace(/\s{2,}/g, ' ').trim();
+
+      if(!namePart) namePart = '(scanned item)';
+      results.push({ name: namePart, price: priceNum });
+    });
+
+    return results;
+  }
+
+  scanReceiptBtn.addEventListener('click', function(){
+    if(typeof Tesseract === 'undefined'){
+      setScanStatus("Couldn't load the scanner (no internet connection?). Try again or add lines manually.", true);
+      return;
+    }
+    receiptPhotoInput.click();
+  });
+
+  receiptPhotoInput.addEventListener('change', function(){
+    var file = receiptPhotoInput.files && receiptPhotoInput.files[0];
+    receiptPhotoInput.value = ''; // allow re-selecting the same file next time
+    if(!file) return;
+
+    scanReceiptBtn.disabled = true;
+    addLineBtn.disabled = true;
+    setScanStatus('Reading receipt… 0%');
+
+    Tesseract.recognize(file, 'eng', {
+      logger: function(m){
+        if(m.status === 'recognizing text' && typeof m.progress === 'number'){
+          setScanStatus('Reading receipt… ' + Math.round(m.progress * 100) + '%');
+        } else if(m.status){
+          setScanStatus(m.status.charAt(0).toUpperCase() + m.status.slice(1) + '…');
+        }
+      }
+    }).then(function(result){
+      var parsed = parseReceiptText((result && result.data && result.data.text) || '');
+
+      if(parsed.length === 0){
+        setScanStatus("Couldn't find any items in that photo — try a clearer, flatter, well-lit shot, or add lines manually.", true);
+        return;
+      }
+
+      // drop any fully-blank lines already on the page before appending scanned ones
+      state.items = state.items.filter(function(it){
+        return (it.name || '').trim().length > 0 || (it.price || 0) !== 0;
+      });
+      parsed.forEach(function(p){
+        state.items.push({ id: state.nextItemId++, name: p.name, price: p.price });
+      });
+
+      renderItems();
+      updateBillTotal();
+      saveState();
+      setScanStatus('Added ' + parsed.length + ' line' + (parsed.length === 1 ? '' : 's') + ' from the photo — please check each one against the receipt, OCR isn\'t perfect.');
+    }).catch(function(err){
+      console.error(err);
+      setScanStatus('Something went wrong reading that photo — please try again or add lines manually.', true);
+    }).finally(function(){
+      scanReceiptBtn.disabled = false;
+      addLineBtn.disabled = false;
+    });
+  });
 
   var currencySelect = document.getElementById('currencySelect');
   currencySelect.addEventListener('change', function(){
