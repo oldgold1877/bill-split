@@ -210,6 +210,18 @@
   }
   .total-strip .label{font-size:12.5px; text-transform:uppercase; letter-spacing:1px; color:var(--accent-ink); font-weight:700;}
   .total-strip .amount{font-family:var(--font-display); font-size:22px; font-weight:700; color:var(--accent-ink);}
+  .ts-left{display:flex; flex-direction:column; gap:4px;}
+  .currency-select{
+    font-family:var(--font-body);
+    font-size:12px;
+    font-weight:600;
+    color:var(--accent-ink);
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:7px;
+    padding:2px 6px;
+    width:fit-content;
+  }
 
   .item-row{
     display:flex;
@@ -405,7 +417,15 @@
     <section class="screen" id="screen2">
       <div class="sticky-total">
         <div class="total-strip">
-          <div class="label">Grand total</div>
+          <div class="ts-left">
+            <div class="label">Grand total</div>
+            <select id="currencySelect" class="currency-select" aria-label="Currency">
+              <option value="€">€ Euro</option>
+              <option value="£">£ Pound</option>
+              <option value="$">$ Dollar</option>
+              <option value="none">No symbol</option>
+            </select>
+          </div>
           <div class="amount" id="billTotal">€0.00</div>
         </div>
       </div>
@@ -478,12 +498,13 @@
 
   var defaultState = {
     step: 1,
-    people: [],      // {id, name, abbr, color}
+    people: [],      // {id, name, abbr}
     items: [],       // {id, name, price}
     shares: {},       // itemId -> { personId: count }
     selectedItemId: null,
     nextPersonId: 1,
-    nextItemId: 1
+    nextItemId: 1,
+    currency: '€'    // '€' | '£' | '$' | 'none'
   };
 
   var state = loadState();
@@ -635,7 +656,9 @@
   var billTotalEl = document.getElementById('billTotal');
 
   function fmt(n){
-    return '€' + (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2);
+    var sym = (state.currency && state.currency !== 'none') ? state.currency : '';
+    var num = (Math.round((n + Number.EPSILON) * 100) / 100).toFixed(2);
+    return sym + num;
   }
 
   function addItem(focus){
@@ -673,11 +696,14 @@
         saveState();
         renderApportionList();
       });
+      nameInp.addEventListener('keydown', function(e){
+        if(e.key === 'Enter'){ e.preventDefault(); priceInp.focus(); priceInp.select(); }
+      });
 
       var priceWrap = document.createElement('div');
       priceWrap.className = 'price-wrap';
       var sym = document.createElement('span');
-      sym.textContent = '€';
+      sym.textContent = (state.currency && state.currency !== 'none') ? state.currency : '';
       var priceInp = document.createElement('input');
       priceInp.className = 'item-price';
       priceInp.type = 'number';
@@ -690,6 +716,9 @@
         updateBillTotal();
         saveState();
         renderApportionList();
+      });
+      priceInp.addEventListener('keydown', function(e){
+        if(e.key === 'Enter'){ e.preventDefault(); addItem(true); }
       });
       priceWrap.appendChild(sym);
       priceWrap.appendChild(priceInp);
@@ -713,6 +742,14 @@
   }
 
   addLineBtn.addEventListener('click', function(){ addItem(true); });
+
+  var currencySelect = document.getElementById('currencySelect');
+  currencySelect.addEventListener('change', function(){
+    state.currency = currencySelect.value;
+    saveState();
+    renderItems();
+    updateBillTotal();
+  });
 
   // ---------- Screen 3: Apportion ----------
   var apportionList = document.getElementById('apportionList');
@@ -887,6 +924,9 @@
   // ---------- Navigation ----------
   function goToStep(n){
     state.step = n;
+    if(n === 2){
+      if(state.items.length === 0){ addItem(true); }
+    }
     if(n === 3){
       if(state.selectedItemId === null && state.items.length){
         state.selectedItemId = state.items[0].id;
@@ -927,10 +967,9 @@
   function init(){
     refreshAbbreviations();
     renderPeople();
+    if(state.step === 2 && state.items.length === 0){ addItem(false); }
     renderItems();
-    if(state.items.length === 0){
-      // seed one blank line for convenience
-    }
+    currencySelect.value = state.currency || '€';
     renderStepTabs();
     if(state.step === 3){ renderPartyDock(); renderApportionList(); }
     if(state.step === 4){ renderSummary(); }
