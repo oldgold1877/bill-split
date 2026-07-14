@@ -8,7 +8,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Manrope:wght@400;500;700;800&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <style>
   :root{
     --paper:#FBF8F1;
@@ -772,7 +771,11 @@
 
   addLineBtn.addEventListener('click', function(){ addItem(true); });
 
-  // ---------- Receipt scanning (Tesseract.js OCR, runs entirely on-device) ----------
+  // ---------- Receipt scanning (Google Cloud Vision OCR) ----------
+  // Key is restricted (Vision API only, this site's referrer only) in the
+  // Google Cloud Console, so it's safe to sit in this public file.
+  var GOOGLE_VISION_API_KEY = 'AIzaSyCbKp2htIzBJtzRdN4L7DvopSerOuWBX-k';
+
   var scanReceiptBtn = document.getElementById('scanReceiptBtn');
   var receiptPhotoInput = document.getElementById('receiptPhotoInput');
   var scanStatus = document.getElementById('scanStatus');
@@ -819,11 +822,20 @@
     return results;
   }
 
+  function fileToBase64(file){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onload = function(){
+        var result = reader.result || '';
+        var comma = result.indexOf(',');
+        resolve(comma >= 0 ? result.substring(comma + 1) : result);
+      };
+      reader.onerror = function(){ reject(reader.error || new Error('Could not read the photo')); };
+      reader.readAsDataURL(file);
+    });
+  }
+
   scanReceiptBtn.addEventListener('click', function(){
-    if(typeof Tesseract === 'undefined'){
-      setScanStatus("Couldn't load the scanner (no internet connection?). Try again or add lines manually.", true);
-      return;
-    }
     receiptPhotoInput.click();
   });
 
@@ -834,18 +846,28 @@
 
     scanReceiptBtn.disabled = true;
     addLineBtn.disabled = true;
-    setScanStatus('Reading receipt… 0%');
+    setScanStatus('Reading receipt…');
 
-    Tesseract.recognize(file, 'eng', {
-      logger: function(m){
-        if(m.status === 'recognizing text' && typeof m.progress === 'number'){
-          setScanStatus('Reading receipt… ' + Math.round(m.progress * 100) + '%');
-        } else if(m.status){
-          setScanStatus(m.status.charAt(0).toUpperCase() + m.status.slice(1) + '…');
-        }
+    fileToBase64(file).then(function(base64){
+      return fetch('https://vision.googleapis.com/v1/images:annotate?key=' + GOOGLE_VISION_API_KEY, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requests: [{
+            image: { content: base64 },
+            features: [{ type: 'DOCUMENT_TEXT_DETECTION' }]
+          }]
+        })
+      });
+    }).then(function(resp){
+      return resp.json();
+    }).then(function(data){
+      var result = data && data.responses && data.responses[0];
+      if(result && result.error){
+        throw new Error(result.error.message || 'Vision API error');
       }
-    }).then(function(result){
-      var parsed = parseReceiptText((result && result.data && result.data.text) || '');
+      var text = (result && result.fullTextAnnotation && result.fullTextAnnotation.text) || '';
+      var parsed = parseReceiptText(text);
 
       if(parsed.length === 0){
         setScanStatus("Couldn't find any items in that photo — try a clearer, flatter, well-lit shot, or add lines manually.", true);
@@ -866,7 +888,8 @@
       setScanStatus('Added ' + parsed.length + ' line' + (parsed.length === 1 ? '' : 's') + ' from the photo — please check each one against the receipt, OCR isn\'t perfect.');
     }).catch(function(err){
       console.error(err);
-      setScanStatus('Something went wrong reading that photo — please try again or add lines manually.', true);
+      var msg = (err && err.message) ? err.message : 'please try again.';
+      setScanStatus('Something went wrong reading that photo: ' + msg, true);
     }).finally(function(){
       scanReceiptBtn.disabled = false;
       addLineBtn.disabled = false;
