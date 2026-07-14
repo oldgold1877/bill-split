@@ -790,6 +790,60 @@
   // Ignores quantity/unit-price columns by only ever taking the LAST price
   // found on a line (the line total), and skips obvious non-item lines
   // (subtotal, tax, card, change, etc).
+  // Vision often detects an item's name and its price as two separate text
+  // blocks (they're far apart horizontally), so the flattened full-text can
+  // put a price on its own line with no name attached. This rebuilds rows
+  // from the individual word boxes Vision also returns, grouping words that
+  // sit at roughly the same height on the page — reuniting name + price
+  // regardless of which text block Vision originally put them in.
+  function reconstructRowsFromWords(textAnnotations){
+    if(!textAnnotations || textAnnotations.length < 2) return null;
+
+    var words = [];
+    for(var i = 1; i < textAnnotations.length; i++){
+      var t = textAnnotations[i];
+      var poly = t.boundingPoly && t.boundingPoly.vertices;
+      if(!poly || !poly.length) continue;
+      var xs = poly.map(function(v){ return v.x || 0; });
+      var ys = poly.map(function(v){ return v.y || 0; });
+      words.push({
+        text: t.description || '',
+        x0: Math.min.apply(null, xs),
+        y0: Math.min.apply(null, ys),
+        y1: Math.max.apply(null, ys)
+      });
+    }
+    if(!words.length) return null;
+
+    words.sort(function(a, b){ return (a.y0 + a.y1) - (b.y0 + b.y1); });
+
+    var rows = [];
+    words.forEach(function(w){
+      var yc = (w.y0 + w.y1) / 2;
+      var h = (w.y1 - w.y0) || 10;
+      var match = null;
+      for(var j = 0; j < rows.length; j++){
+        var r = rows[j];
+        var rYc = (r.y0 + r.y1) / 2;
+        var rH = (r.y1 - r.y0) || 10;
+        if(Math.abs(yc - rYc) < Math.max(h, rH) * 0.6){ match = r; break; }
+      }
+      if(match){
+        match.words.push(w);
+        match.y0 = Math.min(match.y0, w.y0);
+        match.y1 = Math.max(match.y1, w.y1);
+      } else {
+        rows.push({ y0: w.y0, y1: w.y1, words: [w] });
+      }
+    });
+
+    rows.sort(function(a, b){ return a.y0 - b.y0; });
+    return rows.map(function(r){
+      r.words.sort(function(a, b){ return a.x0 - b.x0; });
+      return r.words.map(function(w){ return w.text; }).join(' ');
+    }).join('\n');
+  }
+
   function parseReceiptText(text){
     var skipWords = /\b(sub ?total|total|tax|vat|change|cash|card|debit|credit|visa|mastercard|balance|amount due|due|tip|gratuity|service charge|payment|thank you|receipt|invoice|table|server|order\s*#?|date|time)\b/i;
     var priceRe = /\d+[.,]\d{2}/g;
@@ -866,7 +920,9 @@
       if(result && result.error){
         throw new Error(result.error.message || 'Vision API error');
       }
-      var text = (result && result.fullTextAnnotation && result.fullTextAnnotation.text) || '';
+      var text = reconstructRowsFromWords(result && result.textAnnotations)
+        || (result && result.fullTextAnnotation && result.fullTextAnnotation.text)
+        || '';
       var parsed = parseReceiptText(text);
 
       if(parsed.length === 0){
