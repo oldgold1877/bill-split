@@ -202,7 +202,7 @@
   .total-strip{
     display:flex;
     justify-content:space-between;
-    align-items:baseline;
+    align-items:center;
     padding:12px 16px;
     background:var(--accent-soft);
     border-radius:var(--radius);
@@ -210,17 +210,17 @@
   }
   .total-strip .label{font-size:12.5px; text-transform:uppercase; letter-spacing:1px; color:var(--accent-ink); font-weight:700;}
   .total-strip .amount{font-family:var(--font-display); font-size:22px; font-weight:700; color:var(--accent-ink);}
-  .ts-left{display:flex; flex-direction:column; gap:4px;}
-  .currency-select{
-    font-family:var(--font-body);
-    font-size:12px;
-    font-weight:600;
+  .amount-group{display:flex; align-items:center; gap:7px;}
+  .currency-select-inline{
+    font-family:var(--font-display);
+    font-size:16px;
+    font-weight:700;
     color:var(--accent-ink);
     background:#fff;
     border:1px solid var(--line);
     border-radius:7px;
-    padding:2px 6px;
-    width:fit-content;
+    padding:3px 4px;
+    width:auto;
   }
 
   .item-row{
@@ -417,16 +417,16 @@
     <section class="screen" id="screen2">
       <div class="sticky-total">
         <div class="total-strip">
-          <div class="ts-left">
-            <div class="label">Grand total</div>
-            <select id="currencySelect" class="currency-select" aria-label="Currency">
-              <option value="€">€ Euro</option>
-              <option value="£">£ Pound</option>
-              <option value="$">$ Dollar</option>
-              <option value="none">No symbol</option>
+          <div class="label">Grand total</div>
+          <div class="amount-group">
+            <select id="currencySelect" class="currency-select-inline" aria-label="Currency">
+              <option value="€">€</option>
+              <option value="£">£</option>
+              <option value="$">$</option>
+              <option value="none">—</option>
             </select>
+            <div class="amount" id="billTotal">0.00</div>
           </div>
-          <div class="amount" id="billTotal">€0.00</div>
         </div>
       </div>
       <div class="scroll">
@@ -738,7 +738,7 @@
 
   function updateBillTotal(){
     var total = state.items.reduce(function(sum, it){ return sum + (it.price || 0); }, 0);
-    billTotalEl.textContent = fmt(total);
+    billTotalEl.textContent = (Math.round((total + Number.EPSILON) * 100) / 100).toFixed(2);
   }
 
   addLineBtn.addEventListener('click', function(){ addItem(true); });
