@@ -950,7 +950,20 @@
   document.getElementById('toStep2').addEventListener('click', function(){ goToStep(2); });
   document.getElementById('backTo1').addEventListener('click', function(){ goToStep(1); });
   document.getElementById('toStep3').addEventListener('click', function(){
+    // drop lines that have neither a name nor an amount before moving on
+    state.items = state.items.filter(function(it){
+      var hasName = (it.name || '').trim().length > 0;
+      var hasPrice = (it.price || 0) !== 0;
+      if(!hasName && !hasPrice){
+        delete state.shares[it.id];
+        if(state.selectedItemId === it.id) state.selectedItemId = null;
+        return false;
+      }
+      return true;
+    });
     if(state.items.length === 0){ addItem(false); }
+    renderItems();
+    saveState();
     goToStep(3);
   });
   document.getElementById('backTo2').addEventListener('click', function(){ goToStep(2); });
