@@ -380,7 +380,9 @@
     margin-bottom:14px;
     line-height:1.5;
   }
-  .warn-banner b{display:block; margin-bottom:2px;}
+  .warn-banner b{display:block; margin-bottom:6px;}
+  .warn-item{font-weight:700; line-height:1.4;}
+  .warn-msg{margin-top:8px; font-weight:400; line-height:1.5;}
 
   ::-webkit-scrollbar{width:0px;}
 </style>
@@ -893,7 +895,23 @@
     if(unassigned.length){
       var warn = document.createElement('div');
       warn.className = 'warn-banner';
-      warn.innerHTML = '<b>Some items aren\'t split yet</b>' + unassigned.join(', ') + '. Go back to Split to assign them, or the totals below won\'t match the bill.';
+
+      var heading = document.createElement('b');
+      heading.textContent = "Some items aren't split yet";
+      warn.appendChild(heading);
+
+      unassigned.forEach(function(name){
+        var itemLine = document.createElement('div');
+        itemLine.className = 'warn-item';
+        itemLine.textContent = name;
+        warn.appendChild(itemLine);
+      });
+
+      var msg = document.createElement('div');
+      msg.className = 'warn-msg';
+      msg.textContent = "Go back to Split to assign them, or the totals below won't match the bill.";
+      warn.appendChild(msg);
+
       warnArea.appendChild(warn);
     }
 
