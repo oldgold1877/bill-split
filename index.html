@@ -51,27 +51,8 @@
 
   /* ---------- Header / ticket strip ---------- */
   header.ticket{
-    padding:20px 20px 0 20px;
+    padding:16px 20px 0 20px;
     border-bottom:1px dashed var(--line);
-  }
-  .brand{
-    display:flex;
-    align-items:baseline;
-    justify-content:space-between;
-    margin-bottom:14px;
-  }
-  .brand h1{
-    font-family:var(--font-display);
-    font-size:20px;
-    letter-spacing:0.5px;
-    margin:0;
-    font-weight:700;
-  }
-  .brand .tag{
-    font-size:11px;
-    color:var(--ink-faint);
-    text-transform:uppercase;
-    letter-spacing:1.5px;
   }
   .steps{
     display:flex;
@@ -89,6 +70,8 @@
     padding:6px 2px 10px 2px;
     border-bottom:3px solid var(--line);
     transition:all .2s ease;
+    cursor:pointer;
+    background:none;
   }
   .step-tab.active{
     color:var(--accent-ink);
@@ -212,6 +195,10 @@
   }
 
   /* ---------- Screen 2: bill items ---------- */
+  .sticky-total{
+    padding:16px 20px 0 20px;
+    flex-shrink:0;
+  }
   .total-strip{
     display:flex;
     justify-content:space-between;
@@ -294,13 +281,21 @@
   .bar .seg{
     height:100%;
   }
-  .line-breakdown{
+  .breakdown-row{
+    display:flex;
     margin-top:7px;
-    font-family:var(--font-display);
-    font-size:11.5px;
-    color:var(--ink-soft);
     min-height:14px;
+  }
+  .breakdown-row .bseg{
+    font-family:var(--font-display);
+    font-size:10.5px;
+    color:var(--ink-soft);
     letter-spacing:0.2px;
+    text-align:center;
+    overflow:hidden;
+    white-space:nowrap;
+    text-overflow:ellipsis;
+    padding:0 2px;
   }
 
   .party-dock{
@@ -339,6 +334,7 @@
   }
   .dock-actions{
     display:flex;
+    justify-content:center;
     gap:8px;
     margin-bottom:10px;
   }
@@ -381,10 +377,6 @@
 <div id="app">
 
   <header class="ticket">
-    <div class="brand">
-      <h1>Split</h1>
-      <div class="tag">bill splitter</div>
-    </div>
     <div class="steps" id="stepTabs">
       <div class="step-tab" data-step="1">1 · Who</div>
       <div class="step-tab" data-step="2">2 · Bill</div>
@@ -411,11 +403,13 @@
 
     <!-- SCREEN 2: BILL ITEMS -->
     <section class="screen" id="screen2">
-      <div class="scroll">
+      <div class="sticky-total">
         <div class="total-strip">
           <div class="label">Grand total</div>
           <div class="amount" id="billTotal">€0.00</div>
         </div>
+      </div>
+      <div class="scroll">
         <div id="itemsList"></div>
         <button class="btn btn-ghost" id="addLineBtn" style="width:100%; margin-top:6px;">+ Add line</button>
       </div>
@@ -464,11 +458,21 @@
   "use strict";
 
   var PALETTE = [
-    '#E0483E', '#2F6FED', '#D6A419', // primary-ish: red, blue, yellow
-    '#DD6B20', '#3F9142', '#8452C9', // secondary-ish: orange, green, purple
+    '#E0483E', '#2F6FED', '#D6A419', // primary: red, blue, yellow
+    '#3F9142', '#8452C9', '#DD6B20', // secondary: green, purple, orange
     '#D6478E', '#1FA7B3', '#8A7F4A',
     '#B93B6C', '#2F8F82', '#5860C9'
   ];
+
+  // Colour is derived from a person's current position in the list, not stored,
+  // so that when someone is deleted everyone after them shifts up a colour too.
+  function colorForIndex(idx){
+    return PALETTE[idx % PALETTE.length];
+  }
+  function colorForPersonId(id){
+    var idx = state.people.findIndex(function(p){ return p.id === id; });
+    return idx >= 0 ? colorForIndex(idx) : '#999999';
+  }
 
   var STORAGE_KEY = 'billSplitState_v1';
 
@@ -565,8 +569,7 @@
   function addPerson(){
     var val = nameInput.value.trim();
     if(!val) return;
-    var color = PALETTE[state.people.length % PALETTE.length];
-    state.people.push({ id: state.nextPersonId++, name: val, abbr: '', color: color });
+    state.people.push({ id: state.nextPersonId++, name: val, abbr: '' });
     nameInput.value = '';
     refreshAbbreviations();
     renderPeople();
@@ -595,13 +598,13 @@
       hint.textContent = 'Add everyone who\'s splitting this bill. Each person gets a colour and a short tag.';
       peopleList.appendChild(hint);
     }
-    state.people.forEach(function(p){
+    state.people.forEach(function(p, idx){
       var row = document.createElement('div');
       row.className = 'person-row';
 
       var sw = document.createElement('div');
       sw.className = 'swatch';
-      sw.style.background = p.color;
+      sw.style.background = colorForIndex(idx);
       sw.textContent = p.abbr;
 
       var name = document.createElement('div');
@@ -728,10 +731,10 @@
 
   function renderPartyDock(){
     partyDock.innerHTML = '';
-    state.people.forEach(function(p){
+    state.people.forEach(function(p, idx){
       var btn = document.createElement('button');
       btn.className = 'party-btn';
-      btn.style.background = p.color;
+      btn.style.background = colorForIndex(idx);
       btn.textContent = p.abbr;
       btn.addEventListener('click', function(){
         if(state.selectedItemId === null) return;
@@ -768,27 +771,44 @@
 
       var bar = document.createElement('div');
       bar.className = 'bar';
+      var breakdown = document.createElement('div');
+      breakdown.className = 'breakdown-row';
+
       var shares = getShares(it.id);
       var totalShares = totalShareCount(it.id);
-      var breakdownParts = [];
+      var anyAssigned = false;
+
       if(totalShares > 0){
-        state.people.forEach(function(p){
+        state.people.forEach(function(p, idx){
           var count = shares[p.id] || 0;
           if(count > 0){
+            anyAssigned = true;
+            var widthPct = (count / totalShares * 100);
+            var color = colorForIndex(idx);
+
             var seg = document.createElement('div');
             seg.className = 'seg';
-            seg.style.background = p.color;
-            seg.style.width = (count / totalShares * 100) + '%';
+            seg.style.background = color;
+            seg.style.width = widthPct + '%';
             bar.appendChild(seg);
+
             var amt = (it.price || 0) * (count / totalShares);
-            breakdownParts.push(p.abbr + ' ' + fmt(amt));
+            var bseg = document.createElement('div');
+            bseg.className = 'bseg';
+            bseg.style.width = widthPct + '%';
+            bseg.textContent = p.abbr + ' ' + fmt(amt);
+            breakdown.appendChild(bseg);
           }
         });
       }
 
-      var breakdown = document.createElement('div');
-      breakdown.className = 'line-breakdown';
-      breakdown.textContent = breakdownParts.length ? breakdownParts.join('  ·  ') : 'Not assigned yet';
+      if(!anyAssigned){
+        var bsegEmpty = document.createElement('div');
+        bsegEmpty.className = 'bseg';
+        bsegEmpty.style.width = '100%';
+        bsegEmpty.textContent = 'Not assigned yet';
+        breakdown.appendChild(bsegEmpty);
+      }
 
       line.appendChild(top);
       line.appendChild(bar);
@@ -841,13 +861,13 @@
     }
 
     var grand = 0;
-    state.people.forEach(function(p){
+    state.people.forEach(function(p, idx){
       grand += totals[p.id];
       var row = document.createElement('div');
       row.className = 'summary-row';
       var sw = document.createElement('div');
       sw.className = 'swatch';
-      sw.style.background = p.color;
+      sw.style.background = colorForIndex(idx);
       sw.textContent = p.abbr;
       var nm = document.createElement('div');
       nm.className = 'pname';
@@ -880,6 +900,12 @@
     saveState();
     renderStepTabs();
   }
+
+  document.querySelectorAll('.step-tab').forEach(function(tab){
+    tab.addEventListener('click', function(){
+      goToStep(parseInt(tab.dataset.step, 10));
+    });
+  });
 
   document.getElementById('toStep2').addEventListener('click', function(){ goToStep(2); });
   document.getElementById('backTo1').addEventListener('click', function(){ goToStep(1); });
