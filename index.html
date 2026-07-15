@@ -239,18 +239,20 @@
     font-size:14.5px;
     font-family:var(--font-body);
   }
-  .item-row .price-wrap{
+  .price-wrap{
     position:relative;
-    width:106px;
   }
-  .item-row .price-wrap span{
+  .price-wrap span{
     position:absolute;
     left:11px; top:50%; transform:translateY(-50%);
     color:var(--ink-faint);
     font-family:var(--font-display);
     font-size:14px;
   }
-  .item-row input.item-price{
+  .item-row .price-wrap{
+    width:106px;
+  }
+  input.item-price{
     width:100%;
     padding:11px 10px 11px 24px;
     border-radius:10px;
@@ -260,7 +262,7 @@
     font-family:var(--font-display);
     text-align:right;
   }
-  .item-row input:focus{border-color:var(--accent);}
+  .item-row input:focus, .addon-field input:focus{border-color:var(--accent);}
 
   .line-btn-row{
     display:flex;
@@ -281,6 +283,28 @@
   .scan-status.error{
     color:var(--danger);
     background:var(--danger-soft);
+  }
+  .addon-fields{
+    display:flex;
+    gap:20px;
+    margin-top:16px;
+  }
+  .addon-field{
+    flex:1;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .addon-field label{
+    font-size:11.5px;
+    text-transform:uppercase;
+    letter-spacing:1px;
+    color:var(--ink-soft);
+    font-weight:700;
+    white-space:nowrap;
+  }
+  .addon-field .price-wrap{
+    flex:1;
   }
 
   /* ---------- Screen 3: apportion ---------- */
@@ -392,6 +416,13 @@
   }
   .grand-row .glabel{font-size:13px; text-transform:uppercase; letter-spacing:1px; font-weight:700;}
   .grand-row .gamount{font-family:var(--font-display); font-size:24px; font-weight:700;}
+  .addon-summary-line{
+    font-size:12.5px;
+    color:var(--ink-soft);
+    text-align:right;
+    margin-top:14px;
+    font-style:italic;
+  }
   .warn-banner{
     background:var(--danger-soft);
     color:var(--danger);
@@ -460,6 +491,23 @@
           <button class="btn btn-ghost" id="scanReceiptBtn">📷 Scan receipt</button>
         </div>
         <input type="file" accept="image/*" capture="environment" id="receiptPhotoInput" style="display:none">
+
+        <div class="addon-fields">
+          <div class="addon-field">
+            <label for="taxInput">Tax</label>
+            <div class="price-wrap">
+              <span id="taxSym">€</span>
+              <input type="number" class="item-price" id="taxInput" step="0.01" min="0" placeholder="0.00">
+            </div>
+          </div>
+          <div class="addon-field">
+            <label for="tipInput">Tip</label>
+            <div class="price-wrap">
+              <span id="tipSym">€</span>
+              <input type="number" class="item-price" id="tipInput" step="0.01" min="0" placeholder="0.00">
+            </div>
+          </div>
+        </div>
       </div>
       <footer class="actions">
         <button class="btn btn-ghost" id="backTo1">Back</button>
@@ -532,7 +580,9 @@
     selectedItemId: null,
     nextPersonId: 1,
     nextItemId: 1,
-    currency: '€'    // '€' | '£' | '$' | 'none'
+    currency: '€',   // '€' | '£' | '$' | 'none'
+    tax: 0,
+    tip: 0
   };
 
   var state = loadState();
@@ -765,7 +815,8 @@
   }
 
   function updateBillTotal(){
-    var total = state.items.reduce(function(sum, it){ return sum + (it.price || 0); }, 0);
+    var itemsTotal = state.items.reduce(function(sum, it){ return sum + (it.price || 0); }, 0);
+    var total = itemsTotal + (state.tax || 0) + (state.tip || 0);
     billTotalEl.textContent = (Math.round((total + Number.EPSILON) * 100) / 100).toFixed(2);
   }
 
@@ -958,6 +1009,31 @@
     saveState();
     renderItems();
     updateBillTotal();
+    updateAddonSymbols();
+  });
+
+  var taxInput = document.getElementById('taxInput');
+  var tipInput = document.getElementById('tipInput');
+  var taxSym = document.getElementById('taxSym');
+  var tipSym = document.getElementById('tipSym');
+
+  function updateAddonSymbols(){
+    var sym = (state.currency && state.currency !== 'none') ? state.currency : '';
+    taxSym.textContent = sym;
+    tipSym.textContent = sym;
+  }
+
+  taxInput.addEventListener('input', function(){
+    state.tax = parseFloat(taxInput.value) || 0;
+    updateBillTotal();
+    saveState();
+    if(state.step === 3){ renderApportionList(); }
+  });
+  tipInput.addEventListener('input', function(){
+    state.tip = parseFloat(tipInput.value) || 0;
+    updateBillTotal();
+    saveState();
+    if(state.step === 3){ renderApportionList(); }
   });
 
   // ---------- Screen 3: Apportion ----------
@@ -973,6 +1049,39 @@
   function totalShareCount(itemId){
     var s = getShares(itemId);
     return Object.keys(s).reduce(function(sum, pid){ return sum + s[pid]; }, 0);
+  }
+
+  // Each person's total from items alone (only items that have at least
+  // one share assigned contribute; unassigned items are excluded).
+  function computeItemPersonTotals(){
+    var totals = {};
+    state.people.forEach(function(p){ totals[p.id] = 0; });
+    state.items.forEach(function(it){
+      var shares = getShares(it.id);
+      var shareTotal = totalShareCount(it.id);
+      if(shareTotal === 0) return;
+      state.people.forEach(function(p){
+        var count = shares[p.id] || 0;
+        if(count > 0){ totals[p.id] += (it.price || 0) * (count / shareTotal); }
+      });
+    });
+    return totals;
+  }
+
+  // Adds each person's pro-rata share of tax + tip on top of their item
+  // total, based on their proportion of whatever's been split so far.
+  function computeFullTotals(){
+    var itemTotals = computeItemPersonTotals();
+    var sumAssigned = 0;
+    state.people.forEach(function(p){ sumAssigned += (itemTotals[p.id] || 0); });
+    var addon = (state.tax || 0) + (state.tip || 0);
+    var full = {};
+    state.people.forEach(function(p){
+      var base = itemTotals[p.id] || 0;
+      var ratio = sumAssigned > 0 ? (base / sumAssigned) : 0;
+      full[p.id] = base + ratio * addon;
+    });
+    return full;
   }
 
   function renderPartyDock(){
@@ -1080,23 +1189,12 @@
     summaryList.innerHTML = '';
     warnArea.innerHTML = '';
 
-    var totals = {};
-    state.people.forEach(function(p){ totals[p.id] = 0; });
-
     var unassigned = [];
     state.items.forEach(function(it){
-      var shares = getShares(it.id);
       var totalShares = totalShareCount(it.id);
-      if(totalShares === 0){
-        if(it.name || it.price) unassigned.push(it.name || '(unnamed item)');
-        return;
+      if(totalShares === 0 && (it.name || it.price)){
+        unassigned.push(it.name || '(unnamed item)');
       }
-      state.people.forEach(function(p){
-        var count = shares[p.id] || 0;
-        if(count > 0){
-          totals[p.id] += (it.price || 0) * (count / totalShares);
-        }
-      });
     });
 
     if(unassigned.length){
@@ -1122,9 +1220,10 @@
       warnArea.appendChild(warn);
     }
 
+    var totals = computeFullTotals();
     var grand = 0;
     state.people.forEach(function(p, idx){
-      grand += totals[p.id];
+      grand += totals[p.id] || 0;
       var row = document.createElement('div');
       row.className = 'summary-row';
       var sw = document.createElement('div');
@@ -1136,12 +1235,23 @@
       nm.textContent = p.name;
       var amt = document.createElement('div');
       amt.className = 'pamount';
-      amt.textContent = fmt(totals[p.id]);
+      amt.textContent = fmt(totals[p.id] || 0);
       row.appendChild(sw);
       row.appendChild(nm);
       row.appendChild(amt);
       summaryList.appendChild(row);
     });
+
+    var addon = (state.tax || 0) + (state.tip || 0);
+    if(addon > 0){
+      var addonParts = [];
+      if(state.tax) addonParts.push('Tax ' + fmt(state.tax));
+      if(state.tip) addonParts.push('Tip ' + fmt(state.tip));
+      var addonLine = document.createElement('div');
+      addonLine.className = 'addon-summary-line';
+      addonLine.textContent = addonParts.join('  ·  ') + '  (split pro-rata above)';
+      summaryList.appendChild(addonLine);
+    }
 
     summaryGrandTotal.textContent = fmt(grand);
   }
@@ -1208,6 +1318,10 @@
     if(state.step === 2 && state.items.length === 0){ addItem(false); }
     renderItems();
     currencySelect.value = state.currency || '€';
+    taxInput.value = state.tax ? state.tax : '';
+    tipInput.value = state.tip ? state.tip : '';
+    updateAddonSymbols();
+    updateBillTotal();
     renderStepTabs();
     if(state.step === 3){ renderPartyDock(); renderApportionList(); }
     if(state.step === 4){ renderSummary(); }
