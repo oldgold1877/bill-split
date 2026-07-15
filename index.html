@@ -398,6 +398,7 @@
 
   /* ---------- Screen 4: summary ---------- */
   .pie-chart-area{
+    margin-top:22px;
     margin-bottom:18px;
   }
   .pie-empty-msg{
@@ -627,12 +628,12 @@
     <section class="screen" id="screen4">
       <div class="scroll">
         <div id="warnArea"></div>
-        <div id="pieChartArea" class="pie-chart-area"></div>
         <div id="summaryList"></div>
         <div class="grand-row">
           <div class="glabel">Grand total</div>
           <div class="gamount" id="summaryGrandTotal">€0.00</div>
         </div>
+        <div id="pieChartArea" class="pie-chart-area"></div>
       </div>
       <footer class="actions">
         <button class="btn btn-ghost" id="backTo3">Back</button>
@@ -1291,7 +1292,7 @@
       if(count > 0){
         var shareTotal = totalShareCount(it.id);
         var amount = (it.price || 0) * (count / shareTotal);
-        lines.push({ name: it.name || '(unnamed item)', shares: count, amount: amount });
+        lines.push({ name: it.name || '(unnamed item)', shares: count, totalShares: shareTotal, amount: amount });
       }
     });
 
@@ -1364,7 +1365,7 @@
         nm.textContent = l.name;
         var meta = document.createElement('div');
         meta.className = 'breakdown-item-meta';
-        var sharePart = (l.shares !== null) ? (l.shares + (l.shares === 1 ? ' share · ' : ' shares · ')) : '';
+        var sharePart = (l.shares !== null) ? (l.shares + '/' + l.totalShares + ' · ') : '';
         meta.textContent = sharePart + fmt(l.amount);
         row.appendChild(nm);
         row.appendChild(meta);
