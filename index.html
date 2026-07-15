@@ -267,7 +267,7 @@
   .line-btn-row{
     display:flex;
     gap:8px;
-    margin-top:6px;
+    margin-top:16px;
   }
   .line-btn-row .btn{flex:1;}
   .scan-status{
@@ -486,11 +486,6 @@
       <div class="scroll">
         <div id="scanStatus" class="scan-status"></div>
         <div id="itemsList"></div>
-        <div class="line-btn-row">
-          <button class="btn btn-ghost" id="addLineBtn">+ Add line</button>
-          <button class="btn btn-ghost" id="scanReceiptBtn">📷 Scan receipt</button>
-        </div>
-        <input type="file" accept="image/*" capture="environment" id="receiptPhotoInput" style="display:none">
 
         <div class="addon-fields">
           <div class="addon-field">
@@ -508,6 +503,12 @@
             </div>
           </div>
         </div>
+
+        <div class="line-btn-row">
+          <button class="btn btn-ghost" id="addLineBtn">+ Add line</button>
+          <button class="btn btn-ghost" id="scanReceiptBtn">📷 Scan receipt</button>
+        </div>
+        <input type="file" accept="image/*" capture="environment" id="receiptPhotoInput" style="display:none">
       </div>
       <footer class="actions">
         <button class="btn btn-ghost" id="backTo1">Back</button>
