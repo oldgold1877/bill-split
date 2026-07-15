@@ -397,6 +397,98 @@
   }
 
   /* ---------- Screen 4: summary ---------- */
+  .pie-chart-area{
+    margin-bottom:18px;
+  }
+  .pie-empty-msg{
+    text-align:center;
+    color:var(--ink-faint);
+    font-size:13.5px;
+    padding:20px 10px;
+    line-height:1.5;
+  }
+  .pie-legend{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    justify-content:center;
+    margin-top:14px;
+  }
+  .pie-legend-chip{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    background:var(--paper-dim);
+    border-radius:20px;
+    padding:6px 12px;
+    font-family:var(--font-display);
+    font-size:12.5px;
+    font-weight:700;
+    color:var(--ink);
+    cursor:pointer;
+    transition:background .12s ease;
+  }
+  .pie-legend-chip:active{background:var(--accent-soft);}
+  .pie-legend-dot{
+    width:10px;height:10px;
+    border-radius:50%;
+    flex-shrink:0;
+  }
+  .breakdown-card{
+    background:#fff;
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    padding:14px 16px;
+    margin-top:14px;
+  }
+  .breakdown-header{
+    display:flex;
+    align-items:center;
+    gap:9px;
+    margin-bottom:10px;
+  }
+  .breakdown-dot{
+    width:14px;height:14px;
+    border-radius:50%;
+    flex-shrink:0;
+  }
+  .breakdown-title{
+    flex:1;
+    font-size:15px;
+    font-weight:700;
+  }
+  .breakdown-close{
+    background:none;
+    color:var(--ink-faint);
+    font-size:18px;
+    width:26px;height:26px;
+    border-radius:8px;
+  }
+  .breakdown-close:hover{background:var(--paper-dim); color:var(--danger);}
+  .breakdown-empty{
+    font-size:13.5px;
+    color:var(--ink-faint);
+    padding:4px 0;
+  }
+  .breakdown-row-line{
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    gap:10px;
+    padding:8px 0;
+    border-bottom:1px solid var(--paper-dim);
+  }
+  .breakdown-row-line:last-child{border-bottom:none;}
+  .breakdown-item-name{
+    font-size:14px;
+    font-weight:500;
+  }
+  .breakdown-item-meta{
+    font-family:var(--font-display);
+    font-size:12.5px;
+    color:var(--ink-soft);
+    white-space:nowrap;
+  }
   .summary-row{
     display:flex;
     align-items:center;
@@ -535,6 +627,7 @@
     <section class="screen" id="screen4">
       <div class="scroll">
         <div id="warnArea"></div>
+        <div id="pieChartArea" class="pie-chart-area"></div>
         <div id="summaryList"></div>
         <div class="grand-row">
           <div class="glabel">Grand total</div>
@@ -1185,10 +1278,211 @@
   var summaryList = document.getElementById('summaryList');
   var summaryGrandTotal = document.getElementById('summaryGrandTotal');
   var warnArea = document.getElementById('warnArea');
+  var pieChartArea = document.getElementById('pieChartArea');
+  var selectedBreakdownPersonId = null;
+
+  // Per-item detail for one person: which items, how many shares, how much —
+  // plus their pro-rata slice of tax/tip as a single extra line, if any.
+  function getPersonBreakdown(personId){
+    var lines = [];
+    state.items.forEach(function(it){
+      var shares = getShares(it.id);
+      var count = shares[personId] || 0;
+      if(count > 0){
+        var shareTotal = totalShareCount(it.id);
+        var amount = (it.price || 0) * (count / shareTotal);
+        lines.push({ name: it.name || '(unnamed item)', shares: count, amount: amount });
+      }
+    });
+
+    var addon = (state.tax || 0) + (state.tip || 0);
+    if(addon > 0){
+      var itemTotals = computeItemPersonTotals();
+      var sumAssigned = 0;
+      state.people.forEach(function(p){ sumAssigned += (itemTotals[p.id] || 0); });
+      var base = itemTotals[personId] || 0;
+      var ratio = sumAssigned > 0 ? (base / sumAssigned) : 0;
+      var addonShare = ratio * addon;
+      if(addonShare > 0){
+        lines.push({ name: 'Tax & tip (pro-rata)', shares: null, amount: addonShare });
+      }
+    }
+    return lines;
+  }
+
+  function toggleBreakdown(personId){
+    selectedBreakdownPersonId = (selectedBreakdownPersonId === personId) ? null : personId;
+    renderBreakdownPanel();
+  }
+
+  function renderBreakdownPanel(){
+    var wrap = document.getElementById('pieBreakdown');
+    if(!wrap) return;
+    wrap.innerHTML = '';
+    if(selectedBreakdownPersonId === null) return;
+
+    var personIdx = state.people.findIndex(function(p){ return p.id === selectedBreakdownPersonId; });
+    if(personIdx === -1){ selectedBreakdownPersonId = null; return; }
+    var person = state.people[personIdx];
+
+    var card = document.createElement('div');
+    card.className = 'breakdown-card';
+
+    var header = document.createElement('div');
+    header.className = 'breakdown-header';
+    var dot = document.createElement('span');
+    dot.className = 'breakdown-dot';
+    dot.style.background = colorForIndex(personIdx);
+    var title = document.createElement('span');
+    title.className = 'breakdown-title';
+    title.textContent = person.name;
+    var closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'breakdown-close';
+    closeBtn.textContent = '×';
+    closeBtn.addEventListener('click', function(){
+      selectedBreakdownPersonId = null;
+      renderBreakdownPanel();
+    });
+    header.appendChild(dot);
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+    card.appendChild(header);
+
+    var lines = getPersonBreakdown(person.id);
+    if(lines.length === 0){
+      var empty = document.createElement('div');
+      empty.className = 'breakdown-empty';
+      empty.textContent = person.name + " isn't apportioned any items yet.";
+      card.appendChild(empty);
+    } else {
+      lines.forEach(function(l){
+        var row = document.createElement('div');
+        row.className = 'breakdown-row-line';
+        var nm = document.createElement('div');
+        nm.className = 'breakdown-item-name';
+        nm.textContent = l.name;
+        var meta = document.createElement('div');
+        meta.className = 'breakdown-item-meta';
+        var sharePart = (l.shares !== null) ? (l.shares + (l.shares === 1 ? ' share · ' : ' shares · ')) : '';
+        meta.textContent = sharePart + fmt(l.amount);
+        row.appendChild(nm);
+        row.appendChild(meta);
+        card.appendChild(row);
+      });
+    }
+
+    wrap.appendChild(card);
+  }
+
+  function renderPieChart(){
+    pieChartArea.innerHTML = '';
+    if(state.people.length === 0) return;
+
+    var totals = computeFullTotals();
+    var grand = 0;
+    state.people.forEach(function(p){ grand += (totals[p.id] || 0); });
+
+    if(grand <= 0){
+      var msg = document.createElement('div');
+      msg.className = 'pie-empty-msg';
+      msg.textContent = 'Once items are split between parties, the chart will appear here.';
+      pieChartArea.appendChild(msg);
+      return;
+    }
+
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var size = 220, r = 78, strokeW = 36, cx = size / 2, cy = size / 2;
+    var circumference = 2 * Math.PI * r;
+
+    var svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 ' + size + ' ' + size);
+    svg.setAttribute('width', '100%');
+    svg.style.maxWidth = size + 'px';
+    svg.style.display = 'block';
+    svg.style.margin = '0 auto';
+
+    var g = document.createElementNS(svgNS, 'g');
+    g.setAttribute('transform', 'rotate(-90 ' + cx + ' ' + cy + ')');
+
+    var cumulative = 0;
+    var labelEls = [];
+
+    state.people.forEach(function(p, idx){
+      var value = totals[p.id] || 0;
+      var frac = value / grand;
+      if(frac <= 0) return;
+
+      var dash = frac * circumference;
+      var circle = document.createElementNS(svgNS, 'circle');
+      circle.setAttribute('cx', cx);
+      circle.setAttribute('cy', cy);
+      circle.setAttribute('r', r);
+      circle.setAttribute('fill', 'none');
+      circle.setAttribute('stroke', colorForIndex(idx));
+      circle.setAttribute('stroke-width', strokeW);
+      circle.setAttribute('stroke-dasharray', dash + ' ' + (circumference - dash));
+      circle.setAttribute('stroke-dashoffset', -(cumulative * circumference));
+      circle.style.cursor = 'pointer';
+      circle.addEventListener('click', function(){ toggleBreakdown(p.id); });
+      g.appendChild(circle);
+
+      var midFrac = cumulative + frac / 2;
+      if(frac >= 0.06){
+        var angle = (midFrac * 360 - 90) * Math.PI / 180;
+        var lx = cx + r * Math.cos(angle);
+        var ly = cy + r * Math.sin(angle);
+        var text = document.createElementNS(svgNS, 'text');
+        text.setAttribute('x', lx);
+        text.setAttribute('y', ly);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('dominant-baseline', 'middle');
+        text.setAttribute('fill', '#fff');
+        text.setAttribute('font-family', "'Space Mono', monospace");
+        text.setAttribute('font-weight', '700');
+        text.setAttribute('font-size', '13');
+        text.style.pointerEvents = 'none';
+        text.textContent = Math.round(frac * 100) + '%';
+        labelEls.push(text);
+      }
+
+      cumulative += frac;
+    });
+
+    svg.appendChild(g);
+    labelEls.forEach(function(t){ svg.appendChild(t); });
+    pieChartArea.appendChild(svg);
+
+    var legend = document.createElement('div');
+    legend.className = 'pie-legend';
+    state.people.forEach(function(p, idx){
+      var value = totals[p.id] || 0;
+      var frac = grand > 0 ? value / grand : 0;
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'pie-legend-chip';
+      chip.addEventListener('click', function(){ toggleBreakdown(p.id); });
+      var dot = document.createElement('span');
+      dot.className = 'pie-legend-dot';
+      dot.style.background = colorForIndex(idx);
+      var label = document.createElement('span');
+      label.textContent = p.abbr + ' · ' + Math.round(frac * 100) + '%';
+      chip.appendChild(dot);
+      chip.appendChild(label);
+      legend.appendChild(chip);
+    });
+    pieChartArea.appendChild(legend);
+
+    var breakdownWrap = document.createElement('div');
+    breakdownWrap.id = 'pieBreakdown';
+    pieChartArea.appendChild(breakdownWrap);
+    renderBreakdownPanel();
+  }
 
   function renderSummary(){
     summaryList.innerHTML = '';
     warnArea.innerHTML = '';
+    selectedBreakdownPersonId = null;
 
     var unassigned = [];
     state.items.forEach(function(it){
@@ -1222,6 +1516,7 @@
     }
 
     var totals = computeFullTotals();
+    renderPieChart();
     var grand = 0;
     state.people.forEach(function(p, idx){
       grand += totals[p.id] || 0;
