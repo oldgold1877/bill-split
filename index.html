@@ -480,6 +480,10 @@
     border-bottom:1px solid var(--paper-dim);
   }
   .breakdown-row-line:last-child{border-bottom:none;}
+  .breakdown-total-line{
+    border-top:1px solid var(--ink-faint);
+    margin-top:2px;
+  }
   .breakdown-item-name{
     font-size:14px;
     font-weight:500;
@@ -820,7 +824,13 @@
 
   addPersonBtn.addEventListener('click', addPerson);
   nameInput.addEventListener('keydown', function(e){
-    if(e.key === 'Enter'){ e.preventDefault(); addPerson(); }
+    if(e.key !== 'Enter') return;
+    e.preventDefault();
+    if(nameInput.value.trim() === ''){
+      if(state.people.length >= 2){ goToStep(2); }
+    } else {
+      addPerson();
+    }
   });
 
   // ---------- Screen 2: Bill items ----------
@@ -1371,9 +1381,25 @@
         row.appendChild(meta);
         card.appendChild(row);
       });
+
+      var totalAmount = lines.reduce(function(sum, l){ return sum + l.amount; }, 0);
+      var totalRow = document.createElement('div');
+      totalRow.className = 'breakdown-row-line breakdown-total-line';
+      var totalName = document.createElement('div');
+      totalName.className = 'breakdown-item-name';
+      totalName.style.fontWeight = '700';
+      totalName.textContent = 'Total';
+      var totalMeta = document.createElement('div');
+      totalMeta.className = 'breakdown-item-meta';
+      totalMeta.style.fontWeight = '700';
+      totalMeta.textContent = fmt(totalAmount);
+      totalRow.appendChild(totalName);
+      totalRow.appendChild(totalMeta);
+      card.appendChild(totalRow);
     }
 
     wrap.appendChild(card);
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   function renderPieChart(){
@@ -1393,8 +1419,7 @@
     }
 
     var svgNS = 'http://www.w3.org/2000/svg';
-    var size = 220, r = 78, strokeW = 36, cx = size / 2, cy = size / 2;
-    var circumference = 2 * Math.PI * r;
+    var size = 220, cx = size / 2, cy = size / 2, r = 100;
 
     var svg = document.createElementNS(svgNS, 'svg');
     svg.setAttribute('viewBox', '0 0 ' + size + ' ' + size);
@@ -1403,8 +1428,12 @@
     svg.style.display = 'block';
     svg.style.margin = '0 auto';
 
-    var g = document.createElementNS(svgNS, 'g');
-    g.setAttribute('transform', 'rotate(-90 ' + cx + ' ' + cy + ')');
+    // Point on the circle for a given angle, with 0deg = 12 o'clock and
+    // increasing clockwise (matches the rest of the app's convention).
+    function pointOnCircle(angleDeg, radius){
+      var rad = (angleDeg - 90) * Math.PI / 180;
+      return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) };
+    }
 
     var cumulative = 0;
     var labelEls = [];
@@ -1414,28 +1443,32 @@
       var frac = value / grand;
       if(frac <= 0) return;
 
-      var dash = frac * circumference;
-      var circle = document.createElementNS(svgNS, 'circle');
-      circle.setAttribute('cx', cx);
-      circle.setAttribute('cy', cy);
-      circle.setAttribute('r', r);
-      circle.setAttribute('fill', 'none');
-      circle.setAttribute('stroke', colorForIndex(idx));
-      circle.setAttribute('stroke-width', strokeW);
-      circle.setAttribute('stroke-dasharray', dash + ' ' + (circumference - dash));
-      circle.setAttribute('stroke-dashoffset', -(cumulative * circumference));
-      circle.style.cursor = 'pointer';
-      circle.addEventListener('click', function(){ toggleBreakdown(p.id); });
-      g.appendChild(circle);
+      var startDeg = cumulative * 360;
+      var endDeg = (cumulative + frac) * 360;
+      var start = pointOnCircle(startDeg, r);
+      var end = pointOnCircle(endDeg, r);
+      var largeArc = (endDeg - startDeg) > 180 ? 1 : 0;
 
+      var path = document.createElementNS(svgNS, 'path');
+      var d = 'M ' + cx + ' ' + cy +
+              ' L ' + start.x + ' ' + start.y +
+              ' A ' + r + ' ' + r + ' 0 ' + largeArc + ' 1 ' + end.x + ' ' + end.y +
+              ' Z';
+      path.setAttribute('d', d);
+      path.setAttribute('fill', colorForIndex(idx));
+      path.style.cursor = 'pointer';
+      path.addEventListener('click', function(){ toggleBreakdown(p.id); });
+      svg.appendChild(path);
+
+      // Percentage labels sit inside each wedge, about two-thirds of the
+      // way out to the edge — plenty of room now it's a full pie rather
+      // than a thin ring.
       var midFrac = cumulative + frac / 2;
-      if(frac >= 0.06){
-        var angle = (midFrac * 360 - 90) * Math.PI / 180;
-        var lx = cx + r * Math.cos(angle);
-        var ly = cy + r * Math.sin(angle);
+      if(frac >= 0.05){
+        var labelPoint = pointOnCircle(midFrac * 360, r * 0.62);
         var text = document.createElementNS(svgNS, 'text');
-        text.setAttribute('x', lx);
-        text.setAttribute('y', ly);
+        text.setAttribute('x', labelPoint.x);
+        text.setAttribute('y', labelPoint.y);
         text.setAttribute('text-anchor', 'middle');
         text.setAttribute('dominant-baseline', 'middle');
         text.setAttribute('fill', '#fff');
@@ -1450,7 +1483,6 @@
       cumulative += frac;
     });
 
-    svg.appendChild(g);
     labelEls.forEach(function(t){ svg.appendChild(t); });
     pieChartArea.appendChild(svg);
 
